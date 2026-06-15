@@ -15,6 +15,7 @@ Space-Track.org / CelesTrak (TLE) → generate_positions.py → data/satellites.
 | `generate_positions.py` | TLE取得 → 座標計算 → CSV出力 |
 | `.github/workflows/update_satellites.yml` | 10分ごとに自動実行 |
 | `data/satellites.csv` | VRChatが読むCSV |
+| `vrchat/SatelliteGlobe.cs` | VRChat用 Udon# スクリプト |
 | `requirements.txt` | Python依存ライブラリ |
 
 ## CSV フォーマット
@@ -58,3 +59,166 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 ## GitHub Actions
 
 `workflow_dispatch` でも手動実行可能（Actions タブ → "Update satellite positions" → Run workflow）。
+
+## VRChat セットアップ（Udon#）
+
+### 前提
+
+- VRChat Creator Companion (VCC) でプロジェクトを作成済み
+- UdonSharp がインポート済み（VCC から追加可能）
+
+---
+
+### Step 1 — スクリプトをインポート
+
+1. このリポジトリの `vrchat/SatelliteGlobe.cs` をダウンロード
+2. Unity の **Project** ウィンドウの `Assets` フォルダ内（例: `Assets/Scripts/`）にドラッグ＆ドロップ
+3. コンパイルエラーが出なければOK
+
+---
+
+### Step 2 — マーカー Prefab を3種類作成
+
+衛星を軌道帯ごとに色分けするため、色違いの小さな球を3つ Prefab 化します。
+
+> **Prefab とは:** Scene には置かず Assets に保存しておくひな形のこと。スクリプトが実行時にここからコピーを生成します。なのでこのステップで作る Sphere はどこに置いてもOK（最後に削除します）。
+
+**以下を3回繰り返す（LEO・MEO・GEO用）：**
+
+1. **Hierarchy** の何もない場所で右クリック → `3D Object > Sphere` を作成  
+   （どこに置いても構いません）
+
+2. **Inspector** で Transform の Scale を設定する  
+   スケールは **地球儀の半径に合わせる**：
+   ```
+   Globe Radius 0.5 → Scale (0.008, 0.008, 0.008)
+   Globe Radius 1.0 → Scale (0.015, 0.015, 0.015)  ← 標準
+   Globe Radius 2.0 → Scale (0.030, 0.030, 0.030)
+   ```
+   目安: `Globe Radius × 0.015` が点として見やすいサイズです。
+
+3. **Project** ウィンドウで右クリック → `Create > Material` でマテリアルを作成し色を設定
+   - LEO用: 白 または シアン `(0, 1, 1)`
+   - MEO用: 黄 `(1, 1, 0)`
+   - GEO+用: オレンジ `(1, 0.5, 0)`
+
+4. 作ったマテリアルを Sphere にドラッグして適用
+
+5. Sphere を **Project** ウィンドウの `Assets` フォルダにドラッグ → **Prefab 化**（ファイルが生成される）
+
+6. **Hierarchy** の Sphere は削除してOK（Prefab は Assets に残ります）
+
+---
+
+### Step 3 — 地球儀の中心に Controller オブジェクトを作成
+
+1. **Hierarchy** で地球儀メッシュオブジェクトを選択した状態で右クリック → `Create Empty`
+   - 名前を `SatelliteController` などに変更
+2. `SatelliteController` の **Inspector** で Transform を以下に設定する（必須）：
+   ```
+   Position: (0, 0, 0)
+   Rotation: (0, 0, 0)
+   Scale:    (1, 1, 1)
+   ```
+
+> **なぜ子オブジェクトにするか:** 地球儀が回転・移動しても衛星が一緒に動くようにするためです。  
+> **なぜ Position を (0,0,0) にするか:** 衛星の座標は「地球儀の中心からの距離」で計算されるため、中心からずれていると全衛星の位置がおかしくなります。
+
+---
+
+### Step 4 — スクリプトをアタッチして設定
+
+1. `SatelliteController` を選択した状態で **Inspector** の `Add Component` をクリック
+2. `SatelliteGlobe` を検索してアタッチ
+3. Inspector に表示された各フィールドを設定する：
+
+| フィールド | 設定値 |
+|---|---|
+| **Csv Url** | 下記URLを手入力する（※必須） |
+| **Refresh Interval Seconds** | `600`（10分ごとに更新） |
+| **Globe Radius** | 地球儀メッシュの半径（Unity単位）※下記参照 |
+| **Leo Prefab** | Step 2 で作った白/シアンの Prefab |
+| **Meo Prefab** | Step 2 で作った黄色の Prefab |
+| **Geo Prefab** | Step 2 で作ったオレンジの Prefab |
+| **Max Leo** | `500`（Starlink等LEO衛星の表示上限） |
+| **Max Meo** | `100`（GPS等MEO衛星の表示上限） |
+| **Max Geo** | `150`（静止衛星等の表示上限） |
+
+**Csv Url の入力方法：**  
+Inspector の `Csv Url` 欄をクリックして、以下を入力してください：
+```
+https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+```
+
+**Globe Radius の調べ方：**
+地球儀オブジェクトを選択 → Inspector の Scale X を確認。
+標準の Sphere は直径 1（半径 0.5）なので、Scale X が `2` なら Globe Radius = `1.0`。
+
+---
+
+### Step 5 — URL 許可リストに追加
+
+1. Unity メニューから `VRChat SDK > Settings` を開く
+2. **Allow Listed URLs** の `+` ボタンをクリック
+3. 以下のURLを入力して追加：
+
+```
+https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+```
+
+---
+
+### Step 6 — 動作確認
+
+1. Unity の **Play** ボタンを押す
+2. しばらく待つと（数秒〜10秒）Console に以下のようなログが出れば成功：
+   ```
+   [SatelliteGlobe] Placed — LEO: 500, MEO: 87, GEO+: 142
+   ```
+3. Scene ビューで地球儀の周りに点が表示されているか確認
+
+---
+
+### 軌道帯と表示位置
+
+| 帯 | 高度 | 表示位置 | 色 | 代表例 |
+|---|---|---|---|---|
+| LEO | 0 – 2,000 km | 地表から10〜35%上 | 白/シアン | Starlink, ISS |
+| MEO | 2,001 – 35,785 km | 地表から60〜90%上 | 黄 | GPS, Galileo |
+| GEO+ | ≥ 35,785 km | 地表から2.1倍以上 | オレンジ | 静止衛星 |
+
+> 高度は視認性のために圧縮しています（実際の比率ではありません）。
+
+---
+
+### 向きの合わせ方
+
+衛星は緯度・経度から計算されるため、地球儀テクスチャの向きと一致させる必要があります。
+
+**スクリプトが想定する向き：**
+
+```
+      北極(+Y)
+        ↑
+        │        ← 経度90°E (+Z, 右)
+  ──────┼──────→ 経度0° (+X, 前)
+        │
+      南極(-Y)
+```
+
+**向きの確認・修正手順：**
+
+1. Play モードで衛星を表示させる
+2. 地球儀テクスチャの日本付近（北緯35°, 東経135°）に衛星が来ているか確認
+3. ズレている場合は `SatelliteController` の **Rotation Y** を調整する
+
+**よくあるズレのパターン：**
+
+| 症状 | 原因 | 対処 |
+|---|---|---|
+| 衛星が東西に90°ズレている | テクスチャの基準経度が異なる | `Rotation Y` を ±90° 変える |
+| 衛星が東西に180°ズレている | テクスチャが日付変更線(180°)基準 | `Rotation Y` を `180` にする |
+| 北極・南極が逆 | 地球儀が上下逆 | `Rotation Z` を `180` にする |
+| 衛星が全体的に傾いている | 地球儀メッシュが傾いている | `Rotation X` を調整 |
+
+> **確認に使いやすい衛星:** ISS（高度408km・傾斜角51.6°）はLEO帯の白い点として表示されます。リアルタイムの位置は [ISS Tracker](https://www.n2yo.com/satellite/?s=25544) で確認できます。
