@@ -62,51 +62,118 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 
 ## VRChat セットアップ（Udon#）
 
-`vrchat/SatelliteGlobe.cs` をUnityプロジェクトにコピーして使用します。
+### 前提
 
-### 軌道帯と色分け
+- VRChat Creator Companion (VCC) でプロジェクトを作成済み
+- UdonSharp がインポート済み（VCC から追加可能）
 
-| 帯 | 高度 | 表示半径 | 推奨カラー | 例 |
+---
+
+### Step 1 — スクリプトをインポート
+
+1. このリポジトリの `vrchat/SatelliteGlobe.cs` をダウンロード
+2. Unity の **Project** ウィンドウの `Assets` フォルダ内（例: `Assets/Scripts/`）にドラッグ＆ドロップ
+3. コンパイルエラーが出なければOK
+
+---
+
+### Step 2 — マーカー Prefab を3種類作成
+
+衛星を軌道帯ごとに色分けするため、色違いの小さな球を3つ作ります。
+
+**以下を3回繰り返す（LEO・MEO・GEO用）：**
+
+1. **Hierarchy** で右クリック → `3D Object > Sphere` を作成
+2. **Inspector** で Transform の Scale を `(0.015, 0.015, 0.015)` に変更
+3. **Project** ウィンドウで右クリック → `Create > Material` でマテリアルを作成し、色を設定
+   - LEO用: 白 または シアン `(0, 1, 1)`
+   - MEO用: 黄 `(1, 1, 0)`
+   - GEO用: オレンジ `(1, 0.5, 0)`
+4. 作ったマテリアルを Sphere にドラッグして適用
+5. Sphere を **Project** ウィンドウの `Assets` フォルダにドラッグして **Prefab 化**
+6. **Hierarchy** の Sphere は削除してOK
+
+---
+
+### Step 3 — 地球儀の中心に Controller オブジェクトを作成
+
+1. **Hierarchy** で地球儀メッシュの **子オブジェクト** として空の GameObject を作成
+   - 右クリック（地球儀を選択した状態で）→ `Create Empty`
+   - 名前を `SatelliteController` などに変更
+2. この GameObject の Transform Position が `(0, 0, 0)` になっていることを確認
+
+> **ポイント:** 地球儀が回転・移動しても衛星が一緒に動くよう、必ず子オブジェクトにします。
+
+---
+
+### Step 4 — スクリプトをアタッチして設定
+
+1. `SatelliteController` を選択した状態で **Inspector** の `Add Component` をクリック
+2. `SatelliteGlobe` を検索してアタッチ
+3. Inspector に表示された各フィールドを設定する：
+
+| フィールド | 設定値 |
+|---|---|
+| **Csv Url** | デフォルトのままでOK（変更不要） |
+| **Refresh Interval Seconds** | `600`（10分ごとに更新） |
+| **Globe Radius** | 地球儀メッシュの半径（Unity単位）※下記参照 |
+| **Leo Prefab** | Step 2 で作った白/シアンの Prefab |
+| **Meo Prefab** | Step 2 で作った黄色の Prefab |
+| **Geo Prefab** | Step 2 で作ったオレンジの Prefab |
+| **Max Leo** | `500`（Starlink等LEO衛星の表示上限） |
+| **Max Meo** | `100`（GPS等MEO衛星の表示上限） |
+| **Max Geo** | `150`（静止衛星等の表示上限） |
+
+**Globe Radius の調べ方：**
+地球儀オブジェクトを選択 → Inspector の Scale X を確認。
+標準の Sphere は直径 1（半径 0.5）なので、Scale X が `2` なら Globe Radius = `1.0`。
+
+---
+
+### Step 5 — URL 許可リストに追加
+
+1. Unity メニューから `VRChat SDK > Settings` を開く
+2. **Allow Listed URLs** の `+` ボタンをクリック
+3. 以下のURLを入力して追加：
+
+```
+https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+```
+
+---
+
+### Step 6 — 動作確認
+
+1. Unity の **Play** ボタンを押す
+2. しばらく待つと（数秒〜10秒）Console に以下のようなログが出れば成功：
+   ```
+   [SatelliteGlobe] Placed — LEO: 500, MEO: 87, GEO+: 142
+   ```
+3. Scene ビューで地球儀の周りに点が表示されているか確認
+
+---
+
+### 軌道帯と表示位置
+
+| 帯 | 高度 | 表示位置 | 色 | 代表例 |
 |---|---|---|---|---|
-| LEO | 0 – 2,000 km | 1.10 – 1.35 × 地球儀半径 | 白 / シアン | Starlink, ISS |
-| MEO | 2,000 – 35,785 km | 1.60 – 1.90 × 地球儀半径 | 黄 | GPS, Galileo |
-| GEO+ | ≥ 35,785 km | 2.10 – 2.50 × 地球儀半径 | オレンジ | 静止衛星 |
+| LEO | 0 – 2,000 km | 地表から10〜35%上 | 白/シアン | Starlink, ISS |
+| MEO | 2,001 – 35,785 km | 地表から60〜90%上 | 黄 | GPS, Galileo |
+| GEO+ | ≥ 35,785 km | 地表から2.1倍以上 | オレンジ | 静止衛星 |
 
-高度は視認性のために圧縮されています（実際の比率ではありません）。
+> 高度は視認性のために圧縮しています（実際の比率ではありません）。
 
-### 手順
+---
 
-1. **マーカー Prefab を3種類作成**  
-   小さな Sphere（スケール `(0.015, 0.015, 0.015)` 程度）にそれぞれ色違いのマテリアルを割り当て、Prefab 化する。
+### 地球儀の向きが合わない場合
 
-2. **スクリプトをアタッチ**  
-   地球儀メッシュの中心に空の GameObject を作り、`SatelliteGlobe` をアタッチする。
+このスクリプトは以下の向きを前提にしています（Unity Y-up）：
 
-3. **Inspector で設定**
+```
+北極 → +Y（上）
+経度0°/緯度0° → +X（前）
+経度90°E/緯度0° → +Z（右）
+```
 
-   | フィールド | 説明 | 目安 |
-   |---|---|---|
-   | `Csv Url` | CSVのURL（デフォルト値のまま使用可） | — |
-   | `Refresh Interval Seconds` | 再取得間隔（秒） | `600`（10分） |
-   | `Globe Radius` | 地球儀メッシュの半径（Unity単位） | 例: `1.0` |
-   | `Leo Prefab` | LEO用マーカー（白/シアン） | — |
-   | `Meo Prefab` | MEO用マーカー（黄） | — |
-   | `Geo Prefab` | GEO+用マーカー（オレンジ） | — |
-   | `Max Leo` | LEO表示上限 | `500` |
-   | `Max Meo` | MEO表示上限 | `100` |
-   | `Max Geo` | GEO+表示上限 | `150` |
-
-4. **URL許可リスト**  
-   VRChat SDK の **Allow Listed URLs** に以下を追加する：
-   ```
-   https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
-   ```
-
-### 座標系
-
-地球儀の向きは以下を前提としています（Unity Y-up）：
-- 北極 → +Y
-- (緯度0, 経度0) → +X
-- (緯度0, 経度90°E) → +Z
-
-地球儀メッシュがこの向きと異なる場合は、`SatelliteGlobe` GameObject を回転させて合わせてください。
+地球儀のテクスチャがズレている場合は、`SatelliteController` の Rotation Y を調整してください。
+北極が上を向いていない場合は Rotation X も調整します。
