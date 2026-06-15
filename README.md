@@ -15,6 +15,7 @@ Space-Track.org / CelesTrak (TLE) → generate_positions.py → data/satellites.
 | `generate_positions.py` | TLE取得 → 座標計算 → CSV出力 |
 | `.github/workflows/update_satellites.yml` | 10分ごとに自動実行 |
 | `data/satellites.csv` | VRChatが読むCSV |
+| `vrchat/SatelliteGlobe.cs` | VRChat用 Udon# スクリプト |
 | `requirements.txt` | Python依存ライブラリ |
 
 ## CSV フォーマット
@@ -58,3 +59,41 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 ## GitHub Actions
 
 `workflow_dispatch` でも手動実行可能（Actions タブ → "Update satellite positions" → Run workflow）。
+
+## VRChat セットアップ（Udon#）
+
+`vrchat/SatelliteGlobe.cs` をUnityプロジェクトにコピーして使用します。
+
+### 手順
+
+1. **衛星マーカー用プレハブを作成**  
+   小さな Sphere（スケール 0.005 程度）を作り、マテリアルを割り当てて Prefab 化する。
+
+2. **スクリプトをアタッチ**  
+   地球儀メッシュの中心に空の GameObject を作り、`SatelliteGlobe` をアタッチする。
+
+3. **Inspector で設定**
+
+   | フィールド | 説明 | 目安 |
+   |---|---|---|
+   | `Csv Url` | CSVのURL（デフォルト値のまま使用可） | — |
+   | `Globe Radius` | 地球儀メッシュの半径（Unity単位） | 例: `1.0` |
+   | `Altitude Scale` | 高度 km × この値 = 追加半径 | `0.0001`〜`0.001` |
+   | `Satellite Prefab` | マーカー用Prefab | — |
+   | `Max Satellites` | 表示上限数（FPS注意） | `500`〜`1000` |
+   | `Refresh Interval Seconds` | 再取得間隔（秒） | `600`（10分） |
+
+4. **URL許可リスト**  
+   VRChat SDK の **Allow Listed URLs** に以下を追加する：
+   ```
+   https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+   ```
+
+### 座標系
+
+地球儀の向きは以下を前提としています（Unity Y-up）：
+- 北極 → +Y
+- (緯度0, 経度0) → +X
+- (緯度0, 経度90°E) → +Z
+
+地球儀メッシュがこの向きと異なる場合は、`SatelliteGlobe` GameObject を回転させて合わせてください。
