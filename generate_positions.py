@@ -12,14 +12,20 @@ from datetime import datetime, timezone
 
 from sgp4.api import Satrec, jday
 
-TLE_URL = "https://celestrak.org/pub/TLE/active.txt"
+TLE_URLS = [
+    "https://celestrak.org/pub/TLE/active.txt",
+    "https://celestrak.org/pub/TLE/catalog.txt",
+]
 OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
 
 
 def fetch_tle_lines(url: str) -> list[str]:
     headers = {
-        "User-Agent": "satellite-globe/1.0 (github.com/010kumaguma010/satellite-globe)",
-        "Accept": "text/plain",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
+        "Accept": "text/plain,text/html,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://celestrak.org/",
+        "Connection": "keep-alive",
     }
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
@@ -64,11 +70,17 @@ def tle_to_latlon(line1: str, line2: str, dt: datetime) -> tuple[float, float, f
 
 
 def main() -> None:
-    print(f"Fetching TLE data from {TLE_URL} …")
-    try:
-        lines = fetch_tle_lines(TLE_URL)
-    except Exception as exc:
-        print(f"ERROR: could not fetch TLE data: {exc}", file=sys.stderr)
+    lines = None
+    for url in TLE_URLS:
+        print(f"Fetching TLE data from {url} …")
+        try:
+            lines = fetch_tle_lines(url)
+            break
+        except Exception as exc:
+            print(f"  Warning: {exc}", file=sys.stderr)
+
+    if lines is None:
+        print("ERROR: all TLE sources failed", file=sys.stderr)
         sys.exit(1)
 
     groups = parse_tle_groups(lines)
