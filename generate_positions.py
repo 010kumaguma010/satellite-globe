@@ -18,10 +18,11 @@ from sgp4.api import Satrec, jday
 OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
 
 SPACETRACK_LOGIN = "https://www.space-track.org/ajaxauth/login"
-SPACETRACK_QUERY = (
-    "https://www.space-track.org/basicspacedata/query"
-    "/class/gp/CURRENT/true/FORMAT/tle/orderby/NORAD_CAT_ID%20asc"
-)
+# Try multiple query endpoints — Space-Track sometimes returns 500 on specific paths
+SPACETRACK_QUERIES = [
+    "https://www.space-track.org/basicspacedata/query/class/gp/CURRENT/true/FORMAT/tle",
+    "https://www.space-track.org/basicspacedata/query/class/tle_latest/ORDINAL/1/FORMAT/tle",
+]
 
 CELESTRAK_URLS = [
     "https://celestrak.org/pub/TLE/active.txt",
@@ -49,9 +50,12 @@ def fetch_from_spacetrack(user: str, password: str) -> list[str]:
         if failed:
             raise ValueError(f"Login failed ({result!r}) — check SPACETRACK_USER / SPACETRACK_PASS")
 
-        resp = session.get(SPACETRACK_QUERY, timeout=60)
-        resp.raise_for_status()
-        return resp.text.splitlines()
+        for query_url in SPACETRACK_QUERIES:
+            resp = session.get(query_url, timeout=60)
+            if resp.status_code == 200:
+                return resp.text.splitlines()
+            print(f"  Query {query_url} → {resp.status_code}", file=sys.stderr)
+        raise ValueError(f"All Space-Track queries failed")
 
 
 def fetch_from_celestrak(url: str) -> list[str]:
