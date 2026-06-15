@@ -23,9 +23,9 @@ using VRC.Udon.Common.Interfaces;
 public class SatelliteGlobe : UdonSharpBehaviour
 {
     [Header("Data Source")]
-    [SerializeField] private VRCUrl csvUrl = new VRCUrl(
-        "https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv"
-    );
+    // Set this URL in the Inspector:
+    // https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+    [SerializeField] private VRCUrl csvUrl;
     [Tooltip("Re-fetch interval in seconds (default 600 = 10 min).")]
     [SerializeField] private float refreshIntervalSeconds = 600f;
 

@@ -134,7 +134,7 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 
 | フィールド | 設定値 |
 |---|---|
-| **Csv Url** | デフォルトのままでOK（変更不要） |
+| **Csv Url** | 下記URLを手入力する（※必須） |
 | **Refresh Interval Seconds** | `600`（10分ごとに更新） |
 | **Globe Radius** | 地球儀メッシュの半径（Unity単位）※下記参照 |
 | **Leo Prefab** | Step 2 で作った白/シアンの Prefab |
@@ -143,6 +143,12 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 | **Max Leo** | `500`（Starlink等LEO衛星の表示上限） |
 | **Max Meo** | `100`（GPS等MEO衛星の表示上限） |
 | **Max Geo** | `150`（静止衛星等の表示上限） |
+
+**Csv Url の入力方法：**  
+Inspector の `Csv Url` 欄をクリックして、以下を入力してください：
+```
+https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/satellites.csv
+```
 
 **Globe Radius の調べ方：**
 地球儀オブジェクトを選択 → Inspector の Scale X を確認。
