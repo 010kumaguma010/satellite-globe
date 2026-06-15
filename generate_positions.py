@@ -19,7 +19,9 @@ OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
 
 SPACETRACK_LOGIN = "https://www.space-track.org/ajaxauth/login"
 SPACETRACK_QUERIES = [
-    # GP catalog — various filter combinations
+    # tle_latest always includes the satellite name (3-line TLE)
+    "https://www.space-track.org/basicspacedata/query/class/tle_latest/ORDINAL/1/FORMAT/tle",
+    # GP catalog fallbacks — these may return 2-line TLE without names
     "https://www.space-track.org/basicspacedata/query/class/gp/CURRENT/true/FORMAT/tle",
     "https://www.space-track.org/basicspacedata/query/class/gp/EPOCH/%3Enow-30/FORMAT/tle",
     "https://www.space-track.org/basicspacedata/query/class/gp/FORMAT/tle",
@@ -76,14 +78,27 @@ def fetch_from_celestrak(url: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def parse_tle_groups(lines: list[str]) -> list[tuple[str, str, str]]:
+    """Parse TLE data in 3-line (name + L1 + L2) or 2-line (L1 + L2) format."""
     groups: list[tuple[str, str, str]] = []
     clean = [l.strip() for l in lines if l.strip()]
     i = 0
-    while i + 2 < len(clean):
-        name, l1, l2 = clean[i], clean[i + 1], clean[i + 2]
-        if l1.startswith("1 ") and l2.startswith("2 "):
-            groups.append((name, l1, l2))
+    while i < len(clean):
+        # 3-line format: name line + TLE Line 1 + TLE Line 2
+        if (not clean[i].startswith(("1 ", "2 "))
+                and i + 2 < len(clean)
+                and clean[i + 1].startswith("1 ")
+                and clean[i + 2].startswith("2 ")):
+            name = clean[i].strip()
+            groups.append((name, clean[i + 1], clean[i + 2]))
             i += 3
+        # 2-line format: TLE Line 1 + TLE Line 2 (no name line)
+        elif (clean[i].startswith("1 ")
+              and i + 1 < len(clean)
+              and clean[i + 1].startswith("2 ")):
+            # Extract NORAD catalog number from columns 3-7 of Line 1
+            norad = clean[i][2:7].strip().lstrip("0") or "0"
+            groups.append((f"NORAD-{norad}", clean[i], clean[i + 1]))
+            i += 2
         else:
             i += 1
     return groups
