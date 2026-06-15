@@ -1,36 +1,69 @@
 """
-Fetch active satellite TLEs from CelesTrak, compute current lat/lon/alt,
+Fetch active satellite TLEs, compute current lat/lon/alt,
 and write results to data/satellites.csv.
+
+Primary source: Space-Track.org (requires SPACETRACK_USER / SPACETRACK_PASS env vars).
+Fallback:       CelesTrak pub/TLE (may be blocked from GitHub Actions IP ranges).
 """
 
 import csv
+import http.cookiejar
 import math
 import os
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
 from sgp4.api import Satrec, jday
 
-TLE_URLS = [
+OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
+
+SPACETRACK_LOGIN = "https://www.space-track.org/ajaxauth/login"
+SPACETRACK_QUERY = (
+    "https://www.space-track.org/basicspacedata/query"
+    "/class/gp/CURRENT/true/FORMAT/tle/orderby/NORAD_CAT_ID%20asc"
+)
+
+CELESTRAK_URLS = [
     "https://celestrak.org/pub/TLE/active.txt",
     "https://celestrak.org/pub/TLE/catalog.txt",
 ]
-OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
 
 
-def fetch_tle_lines(url: str) -> list[str]:
+# ---------------------------------------------------------------------------
+# Fetching
+# ---------------------------------------------------------------------------
+
+def fetch_from_spacetrack(user: str, password: str) -> list[str]:
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+    login_data = urllib.parse.urlencode({"identity": user, "password": password}).encode()
+    opener.open(urllib.request.Request(
+        SPACETRACK_LOGIN,
+        data=login_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    ))
+
+    with opener.open(SPACETRACK_QUERY, timeout=60) as resp:
+        return resp.read().decode("utf-8").splitlines()
+
+
+def fetch_from_celestrak(url: str) -> list[str]:
     headers = {
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
-        "Accept": "text/plain,text/html,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/plain,*/*",
         "Referer": "https://celestrak.org/",
-        "Connection": "keep-alive",
     }
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read().decode("utf-8").splitlines()
 
+
+# ---------------------------------------------------------------------------
+# TLE parsing
+# ---------------------------------------------------------------------------
 
 def parse_tle_groups(lines: list[str]) -> list[tuple[str, str, str]]:
     groups: list[tuple[str, str, str]] = []
@@ -45,6 +78,10 @@ def parse_tle_groups(lines: list[str]) -> list[tuple[str, str, str]]:
             i += 1
     return groups
 
+
+# ---------------------------------------------------------------------------
+# Coordinate conversion
+# ---------------------------------------------------------------------------
 
 def _gmst(jd: float) -> float:
     """Greenwich Mean Sidereal Time in radians."""
@@ -69,18 +106,40 @@ def tle_to_latlon(line1: str, line2: str, dt: datetime) -> tuple[float, float, f
     return math.degrees(lat_rad), math.degrees(lon_rad), alt_km
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main() -> None:
-    lines = None
-    for url in TLE_URLS:
-        print(f"Fetching TLE data from {url} …")
+    lines: list[str] | None = None
+
+    # 1. Space-Track (preferred when credentials are available)
+    user = os.environ.get("SPACETRACK_USER", "")
+    password = os.environ.get("SPACETRACK_PASS", "")
+    if user and password:
+        print("Fetching TLE data from Space-Track.org …")
         try:
-            lines = fetch_tle_lines(url)
-            break
+            lines = fetch_from_spacetrack(user, password)
         except Exception as exc:
-            print(f"  Warning: {exc}", file=sys.stderr)
+            print(f"  Warning: Space-Track failed: {exc}", file=sys.stderr)
+
+    # 2. CelesTrak fallback
+    if lines is None:
+        for url in CELESTRAK_URLS:
+            print(f"Fetching TLE data from {url} …")
+            try:
+                lines = fetch_from_celestrak(url)
+                break
+            except Exception as exc:
+                print(f"  Warning: {exc}", file=sys.stderr)
 
     if lines is None:
-        print("ERROR: all TLE sources failed", file=sys.stderr)
+        print(
+            "ERROR: all TLE sources failed.\n"
+            "Set SPACETRACK_USER and SPACETRACK_PASS secrets for reliable access.\n"
+            "Register free at https://www.space-track.org/",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     groups = parse_tle_groups(lines)
