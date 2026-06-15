@@ -41,8 +41,13 @@ def fetch_from_spacetrack(user: str, password: str) -> list[str]:
             timeout=30,
         )
         resp.raise_for_status()
-        if resp.json().get("Login") == "Failed":
-            raise ValueError("Login failed — check SPACETRACK_USER / SPACETRACK_PASS")
+        result = resp.json()
+        failed = (
+            (isinstance(result, dict) and result.get("Login") == "Failed")
+            or (isinstance(result, str) and "fail" in result.lower())
+        )
+        if failed:
+            raise ValueError(f"Login failed ({result!r}) — check SPACETRACK_USER / SPACETRACK_PASS")
 
         resp = session.get(SPACETRACK_QUERY, timeout=60)
         resp.raise_for_status()
