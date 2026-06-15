@@ -7,14 +7,12 @@ Fallback:       CelesTrak pub/TLE (may be blocked from GitHub Actions IP ranges)
 """
 
 import csv
-import http.cookiejar
 import math
 import os
 import sys
-import urllib.parse
-import urllib.request
 from datetime import datetime, timezone
 
+import requests
 from sgp4.api import Satrec, jday
 
 OUTPUT = os.path.join(os.path.dirname(__file__), "data", "satellites.csv")
@@ -36,18 +34,19 @@ CELESTRAK_URLS = [
 # ---------------------------------------------------------------------------
 
 def fetch_from_spacetrack(user: str, password: str) -> list[str]:
-    jar = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    with requests.Session() as session:
+        resp = session.post(
+            SPACETRACK_LOGIN,
+            data={"identity": user, "password": password},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        if resp.json().get("Login") == "Failed":
+            raise ValueError("Login failed — check SPACETRACK_USER / SPACETRACK_PASS")
 
-    login_data = urllib.parse.urlencode({"identity": user, "password": password}).encode()
-    opener.open(urllib.request.Request(
-        SPACETRACK_LOGIN,
-        data=login_data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    ))
-
-    with opener.open(SPACETRACK_QUERY, timeout=60) as resp:
-        return resp.read().decode("utf-8").splitlines()
+        resp = session.get(SPACETRACK_QUERY, timeout=60)
+        resp.raise_for_status()
+        return resp.text.splitlines()
 
 
 def fetch_from_celestrak(url: str) -> list[str]:
@@ -56,9 +55,9 @@ def fetch_from_celestrak(url: str) -> list[str]:
         "Accept": "text/plain,*/*",
         "Referer": "https://celestrak.org/",
     }
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return resp.read().decode("utf-8").splitlines()
+    resp = requests.get(url, headers=headers, timeout=30)
+    resp.raise_for_status()
+    return resp.text.splitlines()
 
 
 # ---------------------------------------------------------------------------
