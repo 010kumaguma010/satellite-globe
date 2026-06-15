@@ -64,10 +64,20 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 
 `vrchat/SatelliteGlobe.cs` をUnityプロジェクトにコピーして使用します。
 
+### 軌道帯と色分け
+
+| 帯 | 高度 | 表示半径 | 推奨カラー | 例 |
+|---|---|---|---|---|
+| LEO | 0 – 2,000 km | 1.10 – 1.35 × 地球儀半径 | 白 / シアン | Starlink, ISS |
+| MEO | 2,000 – 35,785 km | 1.60 – 1.90 × 地球儀半径 | 黄 | GPS, Galileo |
+| GEO+ | ≥ 35,785 km | 2.10 – 2.50 × 地球儀半径 | オレンジ | 静止衛星 |
+
+高度は視認性のために圧縮されています（実際の比率ではありません）。
+
 ### 手順
 
-1. **衛星マーカー用プレハブを作成**  
-   小さな Sphere（スケール 0.005 程度）を作り、マテリアルを割り当てて Prefab 化する。
+1. **マーカー Prefab を3種類作成**  
+   小さな Sphere（スケール `(0.015, 0.015, 0.015)` 程度）にそれぞれ色違いのマテリアルを割り当て、Prefab 化する。
 
 2. **スクリプトをアタッチ**  
    地球儀メッシュの中心に空の GameObject を作り、`SatelliteGlobe` をアタッチする。
@@ -77,11 +87,14 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
    | フィールド | 説明 | 目安 |
    |---|---|---|
    | `Csv Url` | CSVのURL（デフォルト値のまま使用可） | — |
-   | `Globe Radius` | 地球儀メッシュの半径（Unity単位） | 例: `1.0` |
-   | `Altitude Scale` | 高度 km × この値 = 追加半径 | `0.0001`〜`0.001` |
-   | `Satellite Prefab` | マーカー用Prefab | — |
-   | `Max Satellites` | 表示上限数（FPS注意） | `500`〜`1000` |
    | `Refresh Interval Seconds` | 再取得間隔（秒） | `600`（10分） |
+   | `Globe Radius` | 地球儀メッシュの半径（Unity単位） | 例: `1.0` |
+   | `Leo Prefab` | LEO用マーカー（白/シアン） | — |
+   | `Meo Prefab` | MEO用マーカー（黄） | — |
+   | `Geo Prefab` | GEO+用マーカー（オレンジ） | — |
+   | `Max Leo` | LEO表示上限 | `500` |
+   | `Max Meo` | MEO表示上限 | `100` |
+   | `Max Geo` | GEO+表示上限 | `150` |
 
 4. **URL許可リスト**  
    VRChat SDK の **Allow Listed URLs** に以下を追加する：
