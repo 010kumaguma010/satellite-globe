@@ -79,19 +79,34 @@ SPACETRACK_USER=your@email.com SPACETRACK_PASS=yourpassword python generate_posi
 
 ### Step 2 — マーカー Prefab を3種類作成
 
-衛星を軌道帯ごとに色分けするため、色違いの小さな球を3つ作ります。
+衛星を軌道帯ごとに色分けするため、色違いの小さな球を3つ Prefab 化します。
+
+> **Prefab とは:** Scene には置かず Assets に保存しておくひな形のこと。スクリプトが実行時にここからコピーを生成します。なのでこのステップで作る Sphere はどこに置いてもOK（最後に削除します）。
 
 **以下を3回繰り返す（LEO・MEO・GEO用）：**
 
-1. **Hierarchy** で右クリック → `3D Object > Sphere` を作成
-2. **Inspector** で Transform の Scale を `(0.015, 0.015, 0.015)` に変更
-3. **Project** ウィンドウで右クリック → `Create > Material` でマテリアルを作成し、色を設定
+1. **Hierarchy** の何もない場所で右クリック → `3D Object > Sphere` を作成  
+   （どこに置いても構いません）
+
+2. **Inspector** で Transform の Scale を設定する  
+   スケールは **地球儀の半径に合わせる**：
+   ```
+   Globe Radius 0.5 → Scale (0.008, 0.008, 0.008)
+   Globe Radius 1.0 → Scale (0.015, 0.015, 0.015)  ← 標準
+   Globe Radius 2.0 → Scale (0.030, 0.030, 0.030)
+   ```
+   目安: `Globe Radius × 0.015` が点として見やすいサイズです。
+
+3. **Project** ウィンドウで右クリック → `Create > Material` でマテリアルを作成し色を設定
    - LEO用: 白 または シアン `(0, 1, 1)`
    - MEO用: 黄 `(1, 1, 0)`
-   - GEO用: オレンジ `(1, 0.5, 0)`
+   - GEO+用: オレンジ `(1, 0.5, 0)`
+
 4. 作ったマテリアルを Sphere にドラッグして適用
-5. Sphere を **Project** ウィンドウの `Assets` フォルダにドラッグして **Prefab 化**
-6. **Hierarchy** の Sphere は削除してOK
+
+5. Sphere を **Project** ウィンドウの `Assets` フォルダにドラッグ → **Prefab 化**（ファイルが生成される）
+
+6. **Hierarchy** の Sphere は削除してOK（Prefab は Assets に残ります）
 
 ---
 
