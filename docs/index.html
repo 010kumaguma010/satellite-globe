@@ -63,7 +63,7 @@
 <div id="status">読み込み中 …</div>
 <div id="hud" hidden>
   <h1>satellite-globe</h1>
-  <div class="sub">リアルタイム衛星位置(クライアント側伝播)</div>
+  <div class="sub">リアルタイム衛星位置(クライアント側伝播)<br>地球画像: NASA Blue Marble</div>
   <div id="meta"></div>
   <div id="legend"></div>
 </div>
@@ -150,10 +150,18 @@ controls.enableDamping = true;
 controls.minDistance = 1.1;
 controls.maxDistance = 30;
 
-// Earth: unit sphere (1 unit = RE km) with a recessive graticule
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(1, 64, 48),
-  new THREE.MeshBasicMaterial({ color: 0x10151c })));
+// Earth: unit sphere (1 unit = RE km), NASA Blue Marble texture with a
+// recessive graticule on top. three.js SphereGeometry places texture
+// longitude 0 toward +X and 90°E toward -Z — the satellite mapping below
+// uses the same frame.
+const earthMat = new THREE.MeshBasicMaterial({ color: 0x10151c });
+new THREE.TextureLoader().load('./textures/earth_bmng_2k.jpg', (tex) => {
+  tex.colorSpace = THREE.SRGBColorSpace;
+  earthMat.map = tex;
+  earthMat.color.set(0xffffff);
+  earthMat.needsUpdate = true;
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), earthMat));
 const grat = [];
 for (let lat = -60; lat <= 60; lat += 30)
   for (let lon = 0; lon <= 360; lon += 3) {
@@ -231,10 +239,11 @@ function updatePositions() {
     const arr = g.geo.attributes.position.array;
     for (let k = 0; k < g.idx.length; k++) {
       propagateEcef(sats[g.idx[k]], t, cosT, sinT, tmp);
-      // ECEF (x,y,z) → three.js Y-up: (x, z, y), scaled so RE = 1
+      // ECEF (x,y,z) → three.js Y-up right-handed: (x, z, -y), so that
+      // lon 0 → +X and lon 90°E → -Z, matching the textured sphere
       arr[k * 3] = tmp.x / RE;
       arr[k * 3 + 1] = tmp.z / RE;
-      arr[k * 3 + 2] = tmp.y / RE;
+      arr[k * 3 + 2] = -tmp.y / RE;
     }
     g.geo.attributes.position.needsUpdate = true;
   }

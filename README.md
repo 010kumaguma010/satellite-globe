@@ -29,6 +29,8 @@ python -m satglobe          … SGP4伝播 + WGS84測地座標変換
 | `satglobe/kepler.py` | クライアント側伝播モデルのリファレンス実装 |
 | `satglobe/pipeline.py` | SGP4伝播とファイル出力 |
 | `clients/vrchat/` | VRChat用UdonSharpクライアント（[README](clients/vrchat/README.md)） |
+| `assets/` | 3Dモデル: 地球儀・衛星のFBX/GLBとテクスチャ（[README](assets/README.md)） |
+| `scripts/build_assets.py` | 3Dアセットの生成スクリプト（Blender/bpy） |
 | `docs/index.html` | three.js製Webビューア（GitHub Pages対応） |
 | `.github/workflows/update_satellites.yml` | 10分ごとに自動実行 |
 | `.github/workflows/ci.yml` | push/PR時にテスト実行 |

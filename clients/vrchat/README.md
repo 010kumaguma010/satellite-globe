@@ -11,7 +11,7 @@
 
 ## セットアップ
 
-1. **地球儀**: 球体(地球テクスチャ付きなど)を配置。半径をワールド単位で控えておく(例: 直径1mなら 0.5)
+1. **地球儀**: `assets/earth_globe.fbx`(直径1m・NASA Blue Marbleテクスチャは `assets/textures/` に同梱)をインポートして配置。自作の球体でも可。半径をワールド単位で控えておく(例: 直径1mなら 0.5)
 2. **ParticleSystem**: 地球儀の子にParticleSystemを追加し、以下を設定
    - Main: `Play On Awake` オフ / `Max Particles` を 30000 に / `Simulation Space` = Local
    - Emission / Shape: **オフ**(粒子はスクリプトが直接配置します)
