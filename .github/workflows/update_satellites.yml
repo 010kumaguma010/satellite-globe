@@ -2,36 +2,52 @@ name: Update satellite positions
 
 on:
   schedule:
-    # Every 10 minutes
+    # Every 10 minutes (GitHub may delay scheduled runs under load)
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Never let two runs race each other on the same branch
+concurrency:
+  group: update-satellites
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate satellite positions
-        run: python generate_positions.py
+      - name: Generate satellite data
+        run: python -m satglobe
         env:
           SPACETRACK_USER: ${{ secrets.SPACETRACK_USER }}
           SPACETRACK_PASS: ${{ secrets.SPACETRACK_PASS }}
 
-      - name: Commit and push CSV
+      - name: Commit and push data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/satellites.csv
-          git diff --cached --quiet || git commit -m "chore: update satellite positions [skip ci]"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: update satellite positions [skip ci]"
+          # Retry push in case another run landed a commit in between
+          for i in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
           git push
