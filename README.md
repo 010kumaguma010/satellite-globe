@@ -17,8 +17,8 @@ python -m satglobe          … SGP4伝播 + WGS84測地座標変換
         ├─ data/orbits.csv       軌道要素（クライアント側リアルタイム伝播用）
         └─ data/meta.json        生成時刻・衛星数・データソース
         │
-        ▼
-VRChat (Udon#) が raw URL から取得
+        ├──▶ VRChat (clients/vrchat/SatelliteGlobe.cs) … リアルタイム伝播表示
+        └──▶ Webビューア (docs/index.html) … ブラウザで確認
 ```
 
 | パス | 役割 |
@@ -26,7 +26,10 @@ VRChat (Udon#) が raw URL から取得
 | `satglobe/sources.py` | TLE取得（Space-Track → CelesTrak フォールバック） |
 | `satglobe/tle.py` | TLEパース（3LE / 2LE / Alpha-5番号対応） |
 | `satglobe/geodesy.py` | TEME → WGS84測地座標変換 |
+| `satglobe/kepler.py` | クライアント側伝播モデルのリファレンス実装 |
 | `satglobe/pipeline.py` | SGP4伝播とファイル出力 |
+| `clients/vrchat/` | VRChat用UdonSharpクライアント（[README](clients/vrchat/README.md)） |
+| `docs/index.html` | three.js製Webビューア（GitHub Pages対応） |
 | `.github/workflows/update_satellites.yml` | 10分ごとに自動実行 |
 | `.github/workflows/ci.yml` | push/PR時にテスト実行 |
 | `tests/` | ユニットテスト（pytest） |
@@ -68,15 +71,15 @@ ISS (ZARYA),25544,1704110400,51.6400,208.9163,0.0006317,69.9862,290.2018,15.4956
 | `mean_anomaly_deg` | 元期における平均近点角（度） |
 | `mean_motion_rev_per_day` | 平均運動（周回/日） |
 
-簡易伝播の例（円軌道近似、LEOの可視化には十分）:
+クライアント側の伝播モデル（ケプラー伝播 + J2永年摂動）は3つの実装があり、すべて同じアルゴリズムです:
 
-```
-t     = 現在Unix秒 - epoch_unix
-M     = mean_anomaly_deg + 360 * mean_motion_rev_per_day * t / 86400
-半径  = (μ / n²)^(1/3)   ここで n = 平均運動 [rad/s], μ = 398600.4418 km³/s²
-軌道面内の角度Mから、inc/raanで回転して地心慣性座標へ
-経度にはGMST（地球自転）の補正を掛ける
-```
+| 実装 | 用途 |
+|---|---|
+| `satglobe/kepler.py` | リファレンス実装（`tests/test_kepler.py` でSGP4と照合） |
+| `clients/vrchat/SatelliteGlobe.cs` | VRChat（UdonSharp） |
+| `docs/index.html` | Webビューア（three.js） |
+
+SGP4に対する誤差はLEOで10km前後（軌道半径の0.2%）、高離心率軌道でも0.8%以下で、地球儀表示では判別できません。データは10分ごとに更新されるため、モデルの経時ドリフトも問題になりません。
 
 ### `data/meta.json` — メタデータ
 
@@ -91,6 +94,19 @@ M     = mean_anomaly_deg + 360 * mean_motion_rev_per_day * t / 86400
 ```
 
 `generated_at_unix` と現在時刻を比べればデータの鮮度を判定できます。
+
+## クライアント
+
+### VRChat（UdonSharp）
+
+`clients/vrchat/SatelliteGlobe.cs` — orbits.csvをダウンロードし、ワールド内でリアルタイムに全衛星の位置を計算してパーティクル表示します。パースと座標更新はフレーム分割されており、1万機以上でもヒッチしません。セットアップ手順は [clients/vrchat/README.md](clients/vrchat/README.md) を参照。
+
+### Webビューア
+
+`docs/index.html` — ブラウザで動くthree.js製の地球儀ビューア。軌道クラス別の色分け（LEO/MEO/GEO/HEO）・表示切替・ホバーで衛星名表示・データ鮮度表示付き。three.jsは `docs/vendor/` に同梱しているのでCDN不要です。
+
+- **GitHub Pages**: リポジトリの Settings → Pages → Branch: `main` / フォルダ: `/docs` を設定すると `https://010kumaguma010.github.io/satellite-globe/` で公開されます
+- **ローカル**: リポジトリ直下で `python -m http.server` → `http://localhost:8000/docs/`
 
 ## 生データURL（VRChat/Udon#で使用）
 

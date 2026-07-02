@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>satellite-globe — live viewer</title>
+<style>
+  :root {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-muted: #898781;
+    --border: rgba(255, 255, 255, 0.10);
+    --leo: #3987e5;
+    --meo: #199e70;
+    --geo: #c98500;
+    --heo: #008300;
+  }
+  * { margin: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--page);
+    color: var(--ink-2);
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  canvas { display: block; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; width: 250px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+  }
+  #hud h1 { font-size: 14px; font-weight: 600; color: var(--ink); }
+  #hud .sub { color: var(--ink-muted); font-size: 12px; margin-bottom: 10px; }
+  #meta { font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+  #meta .stale { color: var(--ink-muted); }
+  #legend { border-top: 1px solid var(--border); padding-top: 10px; }
+  #legend label {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0; cursor: pointer; user-select: none;
+  }
+  #legend .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  #legend .count { margin-left: auto; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+  #legend input { accent-color: var(--ink-2); }
+  #clock {
+    position: fixed; right: 16px; top: 16px; text-align: right;
+    color: var(--ink-muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  #tooltip {
+    position: fixed; display: none; pointer-events: none; z-index: 10;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 12px; color: var(--ink);
+    max-width: 260px;
+  }
+  #tooltip .dim { color: var(--ink-muted); }
+  #status {
+    position: fixed; left: 50%; top: 45%; transform: translateX(-50%);
+    color: var(--ink-muted); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div id="status">読み込み中 …</div>
+<div id="hud" hidden>
+  <h1>satellite-globe</h1>
+  <div class="sub">リアルタイム衛星位置(クライアント側伝播)</div>
+  <div id="meta"></div>
+  <div id="legend"></div>
+</div>
+<div id="clock"></div>
+<div id="tooltip"></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from './vendor/OrbitControls.js';
+
+// ---- data locations: prefer sibling data/ (local preview), else raw GitHub
+const RAW = 'https://raw.githubusercontent.com/010kumaguma010/satellite-globe/main/data/';
+async function fetchData(name) {
+  try {
+    const r = await fetch('../data/' + name);
+    if (r.ok) return await r.text();
+  } catch (_) { /* fall through to raw URL */ }
+  const r = await fetch(RAW + name);
+  if (!r.ok) throw new Error(name + ': HTTP ' + r.status);
+  return await r.text();
+}
+
+// ---- propagation model — identical to satglobe/kepler.py (tested there)
+const MU = 398600.4418, J2 = 1.08262668e-3, RE = 6378.137;
+
+function gmst(unixSeconds) {
+  const jd = unixSeconds / 86400 + 2440587.5;
+  const t = (jd - 2451545.0) / 36525.0;
+  let s = 67310.54841 + (876600 * 3600 + 8640184.812866) * t
+        + 0.093104 * t * t - 6.2e-6 * t * t * t;
+  s %= 86400; if (s < 0) s += 86400;
+  return s / 240 * Math.PI / 180;
+}
+
+// sat: {epoch, cosI, sinI, raan0, ecc, argp0, m0, n, a, drift}
+function propagateEcef(sat, t, cosT, sinT, out) {
+  const dt = t - sat.epoch, e = sat.ecc;
+  const raan = sat.raan0 - sat.drift * sat.cosI * dt;
+  const argp = sat.argp0 + 0.5 * sat.drift * (5 * sat.cosI * sat.cosI - 1) * dt;
+  let m = sat.m0 + sat.n * dt, E = m;
+  for (let i = 0; i < 4; i++)
+    E -= (E - e * Math.sin(E) - m) / (1 - e * Math.cos(E));
+  const nu = Math.atan2(Math.sqrt(1 - e * e) * Math.sin(E), Math.cos(E) - e);
+  const r = sat.a * (1 - e * Math.cos(E));
+  const u = argp + nu, cosU = Math.cos(u), sinU = Math.sin(u);
+  const cosO = Math.cos(raan), sinO = Math.sin(raan);
+  const xi = r * (cosO * cosU - sinO * sinU * sat.cosI);
+  const yi = r * (sinO * cosU + cosO * sinU * sat.cosI);
+  out.z = r * (sinU * sat.sinI);
+  out.x = xi * cosT + yi * sinT;   // inertial → Earth-fixed
+  out.y = -xi * sinT + yi * cosT;
+  return out;
+}
+
+// ---- orbit classes (fixed order — colors validated vs #0d0d0d)
+const CLASSES = [
+  { key: 'LEO', label: 'LEO(〜2,000km)', color: '#3987e5' },
+  { key: 'MEO', label: 'MEO(2,000km〜)', color: '#199e70' },
+  { key: 'GEO', label: 'GEO(静止軌道帯)', color: '#c98500' },
+  { key: 'HEO', label: 'HEO(高離心率)', color: '#008300' },
+];
+function classify(sat) {
+  if (sat.ecc > 0.25) return 3;
+  const meanAlt = sat.a - RE;
+  if (meanAlt < 2000) return 0;
+  if (Math.abs(meanAlt - 35786) < 400) return 2;
+  return 1;
+}
+
+// ---- scene
+const DEG = Math.PI / 180;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 100);
+camera.position.set(2.4, 1.2, 2.4);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.minDistance = 1.1;
+controls.maxDistance = 30;
+
+// Earth: unit sphere (1 unit = RE km) with a recessive graticule
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(1, 64, 48),
+  new THREE.MeshBasicMaterial({ color: 0x10151c })));
+const grat = [];
+for (let lat = -60; lat <= 60; lat += 30)
+  for (let lon = 0; lon <= 360; lon += 3) {
+    const a = lon * DEG, b = (lon + 3) * DEG, c = Math.cos(lat * DEG), s = Math.sin(lat * DEG);
+    grat.push(c * Math.cos(a), s, c * Math.sin(a), c * Math.cos(b), s, c * Math.sin(b));
+  }
+for (let lon = 0; lon < 360; lon += 30)
+  for (let lat = -90; lat < 90; lat += 3) {
+    const a = lat * DEG, b = (lat + 3) * DEG, ca = Math.cos(lon * DEG), sa = Math.sin(lon * DEG);
+    grat.push(Math.cos(a) * ca, Math.sin(a), Math.cos(a) * sa,
+              Math.cos(b) * ca, Math.sin(b), Math.cos(b) * sa);
+  }
+const gratGeo = new THREE.BufferGeometry();
+gratGeo.setAttribute('position', new THREE.Float32BufferAttribute(grat, 3));
+scene.add(new THREE.LineSegments(gratGeo,
+  new THREE.LineBasicMaterial({ color: 0x2c2c2a, transparent: true, opacity: 0.9 })));
+
+// ---- load + parse
+const $ = (id) => document.getElementById(id);
+let sats = [], names = [], groups = [];  // groups: one Points per class
+
+function parseOrbits(text) {
+  const lines = text.trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const f = lines[i].split(',');
+    if (f.length < 9) continue;
+    const revPerDay = +f[8], ecc = +f[5];
+    if (!(revPerDay > 0) || !(ecc < 1)) continue;
+    const n = revPerDay * 2 * Math.PI / 86400;
+    const a = Math.cbrt(MU / (n * n));
+    const p = a * (1 - ecc * ecc);
+    const inc = +f[3] * DEG;
+    sats.push({
+      epoch: +f[2], cosI: Math.cos(inc), sinI: Math.sin(inc),
+      raan0: +f[4] * DEG, ecc, argp0: +f[6] * DEG, m0: +f[7] * DEG,
+      n, a, drift: 1.5 * J2 * (RE / p) * (RE / p) * n,
+    });
+    names.push(f[0]);
+  }
+}
+
+function buildPoints() {
+  const byClass = CLASSES.map(() => []);
+  sats.forEach((s, i) => byClass[classify(s)].push(i));
+  const legend = $('legend');
+  CLASSES.forEach((cls, ci) => {
+    const idx = byClass[ci];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(idx.length * 3), 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: cls.color, size: 2.5, sizeAttenuation: false,
+    }));
+    pts.frustumCulled = false;
+    scene.add(pts);
+    groups.push({ idx, geo, pts });
+
+    const row = document.createElement('label');
+    row.innerHTML = `<input type="checkbox" checked>
+      <span class="swatch" style="background:${cls.color}"></span>
+      <span>${cls.label}</span><span class="count">${idx.length.toLocaleString()}</span>`;
+    row.querySelector('input').addEventListener('change', (e) => {
+      pts.visible = e.target.checked;
+    });
+    legend.appendChild(row);
+  });
+}
+
+// ---- per-frame update
+const tmp = { x: 0, y: 0, z: 0 };
+function updatePositions() {
+  const t = Date.now() / 1000;
+  const th = gmst(t), cosT = Math.cos(th), sinT = Math.sin(th);
+  for (const g of groups) {
+    if (!g.pts.visible) continue;
+    const arr = g.geo.attributes.position.array;
+    for (let k = 0; k < g.idx.length; k++) {
+      propagateEcef(sats[g.idx[k]], t, cosT, sinT, tmp);
+      // ECEF (x,y,z) → three.js Y-up: (x, z, y), scaled so RE = 1
+      arr[k * 3] = tmp.x / RE;
+      arr[k * 3 + 1] = tmp.z / RE;
+      arr[k * 3 + 2] = tmp.y / RE;
+    }
+    g.geo.attributes.position.needsUpdate = true;
+  }
+}
+
+// ---- hover tooltip
+const ray = new THREE.Raycaster();
+ray.params.Points.threshold = 0.012;
+const mouse = new THREE.Vector2(-2, -2);
+addEventListener('pointermove', (e) => {
+  mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  tooltipXY = [e.clientX, e.clientY];
+});
+let tooltipXY = [0, 0];
+function updateTooltip() {
+  const tip = $('tooltip');
+  ray.setFromCamera(mouse, camera);
+  let best = null;
+  for (let ci = 0; ci < groups.length; ci++) {
+    if (!groups[ci].pts.visible) continue;
+    const hits = ray.intersectObject(groups[ci].pts);
+    if (hits.length && (!best || hits[0].distanceToRay < best.hit.distanceToRay))
+      best = { hit: hits[0], ci };
+  }
+  if (!best) { tip.style.display = 'none'; return; }
+  const si = groups[best.ci].idx[best.hit.index];
+  const altKm = Math.round((best.hit.point.length() - 1) * RE);
+  tip.innerHTML = `${names[si]}<br>
+    <span class="dim">${CLASSES[best.ci].label} ・ 高度 約${altKm.toLocaleString()} km</span>`;
+  tip.style.display = 'block';
+  tip.style.left = (tooltipXY[0] + 14) + 'px';
+  tip.style.top = (tooltipXY[1] + 14) + 'px';
+}
+
+// ---- boot
+try {
+  const [orbitsText, metaText] = await Promise.all([
+    fetchData('orbits.csv'),
+    fetchData('meta.json').catch(() => null),
+  ]);
+  parseOrbits(orbitsText);
+  if (!sats.length) throw new Error('orbits.csv にデータがありません');
+  buildPoints();
+
+  let metaLine = `${sats.length.toLocaleString()} 機`;
+  if (metaText) {
+    const meta = JSON.parse(metaText);
+    const ageMin = Math.max(0, Math.round((Date.now() / 1000 - meta.generated_at_unix) / 60));
+    metaLine += ` <span class="stale">・データ ${ageMin}分前 (${meta.source})</span>`;
+  }
+  $('meta').innerHTML = metaLine;
+  $('status').hidden = true;
+  $('hud').hidden = false;
+} catch (err) {
+  $('status').textContent = '読み込みに失敗しました: ' + err.message;
+}
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  updatePositions();
+  updateTooltip();
+  $('clock').textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  renderer.render(scene, camera);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
