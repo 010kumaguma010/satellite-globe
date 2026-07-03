@@ -1,5 +1,7 @@
 # 3Dアセット
 
+> **VRChatに導入するだけなら** `release/SatelliteGlobe_VRChat.unitypackage`（スクリプト・モデル・テクスチャ・マテリアル同梱のワンセット）をインポートするのが最短です。以下は個別ファイルの説明。
+
 VRChatワールド用の3Dモデルです。Blender(bpy)スクリプトで生成しています。
 
 | ファイル | 内容 | ポリゴン数 |

@@ -5,6 +5,12 @@
 
 VRChat用の衛星データを自動更新するリポジトリです。10分ごとにGitHub Actionsが衛星のTLEデータを取得し、現在位置と軌道要素を計算してCSV/JSONに書き出します。
 
+## クイックスタート（VRChatワールド制作者向け）
+
+必要なもの一式（UdonSharpスクリプト・地球儀FBX・テクスチャ・設定済みマテリアル・手順書）をひとつにまとめたパッケージがあります:
+
+**[`release/SatelliteGlobe_VRChat.unitypackage`](release/SatelliteGlobe_VRChat.unitypackage)** をダウンロード → Unityプロジェクト（VRChat SDK3 + UdonSharp導入済み）にインポート → 同梱の `README_SETUP.md` の手順（5分）でセットアップ完了です。
+
 ## 仕組み
 
 ```
@@ -31,6 +37,7 @@ python -m satglobe          … SGP4伝播 + WGS84測地座標変換
 | `clients/vrchat/` | VRChat用UdonSharpクライアント（[README](clients/vrchat/README.md)） |
 | `assets/` | 3Dモデル: 地球儀・衛星のFBX/GLBとテクスチャ（[README](assets/README.md)） |
 | `scripts/build_assets.py` | 3Dアセットの生成スクリプト（Blender/bpy） |
+| `release/SatelliteGlobe_VRChat.unitypackage` | VRChat導入用ワンセット（`scripts/build_unitypackage.py` で生成） |
 | `docs/index.html` | three.js製Webビューア（GitHub Pages対応） |
 | `.github/workflows/update_satellites.yml` | 10分ごとに自動実行 |
 | `.github/workflows/ci.yml` | push/PR時にテスト実行 |
